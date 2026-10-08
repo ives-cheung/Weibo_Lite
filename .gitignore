@@ -1,0 +1,23 @@
+.gradle/
+.kotlin/
+**/build/
+local.properties
+research/
+*.jks
+*.keystore
+
+# Local artifacts, upstream research and third-party content captures
+dist/
+docs/screenshots/
+docs/requirements.txt
+assets/app-icon-source.png
+assets/app-icon-wb.png
+assets/app-icon-wb.svg
+app/src/main/res/drawable-nodpi/icon_foreground.png
+.DS_Store
+*.log
+*.har
+.env
+.env.*
+*.pem
+*.p12
