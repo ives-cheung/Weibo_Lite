@@ -2,7 +2,7 @@ plugins { id("com.android.application"); id("org.jetbrains.kotlin.android"); id(
 android {
     namespace = "com.weibolite.android"
     compileSdk = 35
-    defaultConfig { applicationId = "com.weibolite.android"; minSdk = 26; targetSdk = 35; versionCode = 12; versionName = "0.2.7" }
+    defaultConfig { applicationId = "com.weibolite.android"; minSdk = 26; targetSdk = 35; versionCode = 14; versionName = "0.2.9" }
     buildFeatures { compose = true }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     kotlinOptions { jvmTarget = "17" }

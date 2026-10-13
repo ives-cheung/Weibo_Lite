@@ -123,3 +123,15 @@ PKX110 已覆盖安装，设备确认 versionCode=8、versionName=0.2.3。
 ## 0.2.7 · 点击复制话题
 
 使用 Compose LinkAnnotation.Clickable 为完整 #话题# 添加独立复制动作，系统剪贴板保存含井号的原文并显示 Toast。适用于微博正文、引用全文及评论正文；@ 用户仅保留蓝色样式。新增 3 项测试覆盖相邻话题独立回调、未闭合话题/提及不生成复制链接、多行话题精确范围，全部 12 项单元测试通过。assembleRelease、lintDebug、签名验证通过。PKX110 install -r Success，确认 versionCode=12、versionName=0.2.7。未在实体手机上操作界面。
+
+## 0.2.8 · 图片翻页与保存
+
+原尺寸图片不消费单指平移，由 HorizontalPager 翻页；放大时允许图片平移。右上角保存当前图片原始字节到 Pictures/WeiboLite，通过 MediaStore 发布，异常清理未完成文件，下载期间禁重复保存。Android 29+ 无需存储权限；26–28 首次保存请求 WRITE_EXTERNAL_STORAGE。保存前验证实际图片尺寸和 MIME。
+
+14 项单元测试、lintDebug、assembleDebug、assembleRelease 通过，签名验证通过。模拟器使用真实微博图片验证 1/2→2/2→1/2 双向翻页，以及单图和两页分别保存；MediaStore 显示 JPEG、Pictures/WeiboLite/、is_pending=0，大小非零。Android 8–9 权限分支未在旧设备实测。PKX110 安装成功，versionCode=13、versionName=0.2.8。测试模拟器已关闭。
+
+## 0.2.9 · 热搜返回路径
+
+通过 rememberSaveable 记录搜索入口；热搜点击进入后，工具栏按钮（语义“返回热搜界面”）和系统返回统一回到热搜。普通搜索保留回到首页的行为；手动点击搜索导航清除热搜入口。热搜列表状态提升到 AppContent，离开及返回时保留滚动位置。详情保留逐层返回。
+
+assembleRelease、assembleDebug、lintDebug 与签名验证通过。模拟器验证热搜→搜索结果→工具栏返回、热搜→搜索结果→系统返回，均回到热搜。前后 UI XML 的可见排名及坐标一致，确认滚动位置保留。PKX110 install -r Success，versionCode=14、versionName=0.2.9。测试模拟器已关闭。

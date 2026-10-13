@@ -1,5 +1,14 @@
 package com.weibolite.android.ui
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
+import com.weibolite.android.data.media.ImageSaver
+import kotlinx.coroutines.CancellationException
 import android.app.Activity
 import android.view.WindowManager
 import androidx.activity.compose.BackHandler
@@ -162,6 +171,8 @@ private val LocalFeedPadding = staticCompositionLocalOf { PaddingValues() }
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable private fun AppContent(vm: MainViewModel) {
     var tab by rememberSaveable { mutableIntStateOf(0) }
+    var searchOriginTab by rememberSaveable { mutableIntStateOf(0) }
+    val hotListState = rememberLazyListState()
     var query by rememberSaveable { mutableStateOf("") }
     var submitted by rememberSaveable { mutableStateOf(false) }
     var userMode by rememberSaveable { mutableStateOf(false) }
@@ -179,9 +190,10 @@ private val LocalFeedPadding = staticCompositionLocalOf { PaddingValues() }
     val snack = remember { SnackbarHostState() }; val scope = rememberCoroutineScope()
     fun openPost(p: Post) { selected = p; vm.loadComments(p.id) }
     fun openUser(u: User) { profileId = u.id; vm.loadProfile(u.id) }
-    fun doSearch(q: String) { query = q; submitted = true; tab = 2; userMode = false; keyboard?.hide(); vm.search(q) }
+    fun returnFromSearch() { tab = searchOriginTab; keyboard?.hide() }
+    fun doSearch(q: String) { if (tab != 2) searchOriginTab = tab; query = q; submitted = true; tab = 2; userMode = false; keyboard?.hide(); vm.search(q) }
     BackHandler(selected != null || profileId != null || tab != 0) {
-        when { profileId != null -> profileId = null; selected != null -> selected = null; else -> tab = 0 }
+        when { profileId != null -> profileId = null; selected != null -> selected = null; tab == 2 -> returnFromSearch(); else -> tab = 0 }
     }
     LaunchedEffect(tab, submitted) { if (tab == 1) vm.refreshHot(); if (tab == 2 && !submitted) { focus.requestFocus(); keyboard?.show() } }
     val backdrop = rememberGraphicsLayer()
@@ -195,7 +207,7 @@ private val LocalFeedPadding = staticCompositionLocalOf { PaddingValues() }
             GlassPanel(Modifier.statusBarsPadding().padding(horizontal = 12.dp, vertical = 8.dp).fillMaxWidth(), radius = 26) {
             if (tab == 2 && selected == null && profileId == null) {
                 Row(Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = { tab = 0; keyboard?.hide() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回首页") }
+                    IconButton(onClick = { returnFromSearch() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, if (searchOriginTab == 1) "返回热搜界面" else "返回首页") }
                     TextField(value = query, onValueChange = { query = it; submitted = false }, modifier = Modifier.weight(1f).focusRequester(focus), placeholder = { Text("搜索微博或用户", fontSize = 16.sp) }, singleLine = true, keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search), keyboardActions = KeyboardActions(onSearch = { if (query.isNotBlank()) { submitted = true; keyboard?.hide(); vm.search(query, userMode) } }), colors = TextFieldDefaults.colors(focusedContainerColor = Color.Transparent, unfocusedContainerColor = Color.Transparent, focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent))
                     IconButton(onClick = { if (query.isNotBlank()) { submitted = true; keyboard?.hide(); vm.search(query, userMode) } }) { Icon(Icons.Default.Search, "执行搜索") }
                 }
@@ -211,7 +223,7 @@ private val LocalFeedPadding = staticCompositionLocalOf { PaddingValues() }
         bottomBar = {
             if (selected == null && profileId == null) {
                 GlassPanel(Modifier.navigationBarsPadding().padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 12.dp).fillMaxWidth(), radius = 34, frosted = true) {
-                    BubbleNavigation(tab) { i -> tab = i; if (i == 2) submitted = false; keyboard?.hide() }
+                    BubbleNavigation(tab) { i -> tab = i; if (i == 2) { submitted = false; searchOriginTab = 0 }; keyboard?.hide() }
                 }
             }
         }
@@ -247,7 +259,7 @@ private val LocalFeedPadding = staticCompositionLocalOf { PaddingValues() }
                 }
                 tab == 0 -> PostFeed(home, { vm.refreshHome() }, { vm.refreshHome(true) }, ::openPost, ::openUser, { images, at -> gallery = images to at })
                 tab == 1 -> PullToRefreshBox(isRefreshing = hot.loading && hot.items.isNotEmpty(), onRefresh = { vm.refreshHot(true) }) {
-                    LazyColumn(Modifier.fillMaxSize(), contentPadding = LocalFeedPadding.current) {
+                    LazyColumn(Modifier.fillMaxSize(), state = hotListState, contentPadding = LocalFeedPadding.current) {
                         item { Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp), horizontalArrangement = Arrangement.SpaceBetween) { Text("实时榜单", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant); Text(if (hot.updated == 0L) "下拉刷新" else "更新于 ${SimpleDateFormat("HH:mm", Locale.CHINA).format(hot.updated)}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) } }
                         item { StateMessage(hot.loading, hot.items.isEmpty(), hot.error, "暂无热搜") { vm.refreshHot(true) } }
                         items(hot.items, key = { it.word }) { topic ->
@@ -282,7 +294,7 @@ private val LocalFeedPadding = staticCompositionLocalOf { PaddingValues() }
                     item { Section("存储与隐私") }
                     item { SettingsRow("清除热搜缓存", "下次进入重新获取") { vm.clearCache(); scope.launch { snack.showSnackbar("热搜缓存已清除") } } }
                     item { SettingsRow("清除搜索记录", "记录仅存储在本机") { vm.clearHistory(); scope.launch { snack.showSnackbar("搜索记录已清除") } } }
-                    item { SettingsRow("关于 Weibo Lite", "0.2.7 · 独立第三方客户端") { about = true } }
+                    item { SettingsRow("关于 Weibo Lite", "0.2.9 · 独立第三方客户端") { about = true } }
                 }
             }
         }
@@ -293,7 +305,7 @@ private val LocalFeedPadding = staticCompositionLocalOf { PaddingValues() }
     }
     }
     if (cookieDialog) CookieDialog(vm, { cookieDialog = false }, { scope.launch { snack.showSnackbar(it) } })
-    if (about) AlertDialog(onDismissRequest = { about = false }, title = { Text("Weibo Lite") }, text = { Text("轻量第三方微博阅读器\n\n仅申请网络权限。无广告、统计或推送 SDK。Cookie 由 Android Keystore 加密保存在本机，仅向微博服务发送。\n\n当前版本提供公开首页、热搜和搜索；微博可能要求有效会话或验证。与微博官方无关联。") }, confirmButton = { TextButton(onClick = { about = false }) { Text("知道了") } })
+    if (about) AlertDialog(onDismissRequest = { about = false }, title = { Text("Weibo Lite") }, text = { Text("轻量第三方微博阅读器\n\nAndroid 10 及以上仅需网络权限；Android 8–9 保存图片时会请求存储权限。无广告、统计或推送 SDK。Cookie 由 Android Keystore 加密保存在本机，仅向微博服务发送。\n\n当前版本提供公开首页、热搜和搜索；微博可能要求有效会话或验证。与微博官方无关联。") }, confirmButton = { TextButton(onClick = { about = false }) { Text("知道了") } })
     gallery?.let { (images, at) -> ImageViewer(images, at) { gallery = null } }
 }
 
@@ -457,18 +469,65 @@ private val ReplyPrefix = Regex("^回复\\s*(@[^:：\\n]+)[:：]\\s*")
         error?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 12.sp) }
     } }, confirmButton = { TextButton(onClick = { save(value) }, enabled = !saving && value.contains("SUB=")) { Text(if (saving) "保存中…" else "保存") } }, dismissButton = { Row { TextButton(onClick = { save("") }, enabled = !saving) { Text("删除 Cookie") }; TextButton(onClick = dismiss, enabled = !saving) { Text("取消") } } })
 }
+@OptIn(ExperimentalFoundationApi::class)
 @Composable private fun ImageViewer(images: List<String>, initial: Int, close: () -> Unit) {
+    if (images.isEmpty()) return
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var saving by remember { mutableStateOf(false) }
+    var pendingUrl by remember { mutableStateOf<String?>(null) }
+    fun save(url: String) {
+        if (saving) return
+        saving = true
+        scope.launch {
+            try {
+                ImageSaver.save(context.applicationContext, url)
+                Toast.makeText(context, "已保存到相册 · Pictures/WeiboLite", Toast.LENGTH_LONG).show()
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                Toast.makeText(context, e.message ?: "保存失败，请重试", Toast.LENGTH_LONG).show()
+            } finally { saving = false }
+        }
+    }
+    val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        val url = pendingUrl
+        pendingUrl = null
+        if (granted && url != null) save(url)
+        else Toast.makeText(context, "未获得存储权限，图片未保存", Toast.LENGTH_SHORT).show()
+    }
     Dialog(onDismissRequest = close, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
-        val pager = rememberPagerState(initialPage = initial) { images.size }
+        val pager = rememberPagerState(initialPage = initial.coerceIn(images.indices)) { images.size }
+        var zoomed by remember { mutableStateOf(false) }
+        LaunchedEffect(pager.currentPage) { zoomed = false }
         Box(Modifier.fillMaxSize().background(Color.Black)) {
-            HorizontalPager(pager, Modifier.fillMaxSize()) { at ->
-                var scale by remember { mutableFloatStateOf(1f) }; var x by remember { mutableFloatStateOf(0f) }; var y by remember { mutableFloatStateOf(0f) }
-                val transform = rememberTransformableState { zoom, pan, _ -> scale = (scale * zoom).coerceIn(1f, 5f); if (scale > 1f) { x += pan.x; y += pan.y } else { x = 0f; y = 0f } }
-                AsyncImage(image(images[at]), "图片 ${at + 1}", Modifier.fillMaxSize().transformable(transform).graphicsLayer(scaleX = scale, scaleY = scale, translationX = x, translationY = y), contentScale = ContentScale.Fit)
+            HorizontalPager(pager, Modifier.fillMaxSize(), userScrollEnabled = !zoomed) { at ->
+                var scale by remember(pager.currentPage) { mutableFloatStateOf(1f) }
+                var x by remember(pager.currentPage) { mutableFloatStateOf(0f) }
+                var y by remember(pager.currentPage) { mutableFloatStateOf(0f) }
+                val transform = rememberTransformableState { zoom, pan, _ ->
+                    scale = (scale * zoom).coerceIn(1f, 5f)
+                    if (scale > 1f) { x += pan.x; y += pan.y } else { x = 0f; y = 0f }
+                    if (at == pager.currentPage) zoomed = scale > 1f
+                }
+                AsyncImage(image(images[at]), "图片 ${at + 1}", Modifier.fillMaxSize()
+                    .transformable(state = transform, canPan = { scale > 1f })
+                    .graphicsLayer(scaleX = scale, scaleY = scale, translationX = x, translationY = y), contentScale = ContentScale.Fit)
             }
-            Row(Modifier.fillMaxWidth().statusBarsPadding().padding(8.dp), verticalAlignment = Alignment.CenterVertically) { IconButton(onClick = close) { Icon(Icons.Default.Close, "关闭图片", tint = Color.White) }; Text("${pager.currentPage + 1} / ${images.size}", color = Color.White, fontSize = 14.sp) }
+            Row(Modifier.fillMaxWidth().background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.65f), Color.Transparent))).statusBarsPadding().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = close) { Icon(Icons.Default.Close, "关闭图片", tint = Color.White) }
+                Text("${pager.currentPage + 1} / ${images.size}", color = Color.White, fontSize = 14.sp)
+                Spacer(Modifier.weight(1f))
+                TextButton(enabled = !saving && pendingUrl == null, onClick = {
+                    val url = images[pager.currentPage]
+                    if (Build.VERSION.SDK_INT <= 28 && ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+                        pendingUrl = url
+                        permission.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                    } else save(url)
+                }) { Text(if (saving) "保存中…" else "保存", color = Color.White.copy(alpha = if (saving) 0.65f else 1f), fontSize = 15.sp) }
+            }
         }
     }
 }
+
 private fun heat(n: Long): String = if (n >= 10000) String.format(Locale.CHINA, "%.1f万", n / 10000.0) else n.toString()
 private fun time(raw: String): String = runCatching { val d = SimpleDateFormat("EEE MMM dd HH:mm:ss Z yyyy", Locale.ENGLISH).parse(raw) ?: return raw; SimpleDateFormat("MM-dd HH:mm", Locale.CHINA).format(d) }.getOrDefault(raw)
